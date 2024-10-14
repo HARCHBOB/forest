@@ -8,19 +8,16 @@ module Lib2
     main
     ) where
 
--- | An entity which represets user input.
--- It should match the grammar from Laboratory work #1.
--- Currently it has no constructors but you can introduce
--- as many as needed.
-
--- Defined constructors for the plant, cut, and inspect commands.
+-- | Command representation based on the BNF grammar.
 data Query
   = PlantTree Tree
   | PlantForest Forest
   | CutBranch Name
+  | CutBranches Name
   | CutTree Name
   | CutForest
   | InspectBranch Name
+  | InspectBranches Name
   | InspectTree Name
   | InspectForest
   deriving (Eq, Show)
@@ -29,85 +26,56 @@ data Query
 data Name = Oak | Pine | Birch | Marple
   deriving (Eq, Show)
 
--- | The structure of forest.
+-- | Recursive structure of leaves and branches.
 data Leaf = Leaf
   deriving (Eq, Show)
 
-data Branch = Branch[Leaf]
-  deriving(Eq, Show)
+data Branch = Branch [Leaf]
+  deriving (Eq, Show)
 
-data Tree = Tree Name [Branch]
+data Branches = SingleBranch Branch | MultipleBranches Branch Branches
+  deriving (Eq, Show)
+
+data Leaves = SingleLeaf Leaf | MultipleLeaves Leaf Leaves
+  deriving (Eq, Show)
+
+data Tree = Tree Name Branches
   deriving (Eq, Show)
 
 type Forest = [Tree]
 
-
--- | The instances are needed basically for tests
---instance Eq Query where
---  (==) _ _= False
-
---instance Show Query where
---  show _ = ""
-
-
--- | Parses user's input.
--- The function must have tests.
-
--- Parses strings like "plant oak", "cut forest", ect.
+-- | Parses user input to match the BNF grammar.
 parseQuery :: String -> Either String Query
+parseQuery "" = Left "Command cannot be empty"  -- Updated error message for empty input
 parseQuery input = case words input of 
-  ["plant", "oak"]                -> Right $ PlantTree (Tree Oak [Branch [Leaf]])
-  ["plant", "pine"]               -> Right $ PlantTree (Tree Pine [Branch [Leaf]])
-  ["plant", "birch"]              -> Right $ PlantTree (Tree Birch [Branch [Leaf]])
-  ["plant", "marple"]             -> Right $ PlantTree (Tree Marple [Branch [Leaf]])
+  ["plant", "oak"]                -> Right $ PlantTree (Tree Oak (SingleBranch (Branch [Leaf])))
+  ["plant", "pine"]               -> Right $ PlantTree (Tree Pine (SingleBranch (Branch [Leaf])))
+  ["plant", "birch"]              -> Right $ PlantTree (Tree Birch (SingleBranch (Branch [Leaf])))
+  ["plant", "marple"]             -> Right $ PlantTree (Tree Marple (SingleBranch (Branch [Leaf])))
   ["plant", "forest"]             -> Right $ PlantForest exampleForest
-  ["cut", "branch", "oak"]        -> Right $ CutBranch Oak
-  ["cut", "branch", "pine"]       -> Right $ CutBranch Pine
-  ["cut", "branch", "birch"]      -> Right $ CutBranch Birch
-  ["cut", "branch", "marple"]     -> Right $ CutBranch Marple
-  ["cut", "oak"]                  -> Right $ CutTree Oak
-  ["cut", "pine"]                 -> Right $ CutTree Pine
-  ["cut", "birch"]                -> Right $ CutTree Birch
-  ["cut", "marple"]               -> Right $ CutTree Marple
+  ["cut", "branch", treeName]     -> parseCutBranch treeName
+  ["cut", "branches", treeName]   -> parseCutBranches treeName
+  ["cut", treeName]               -> parseCutTree treeName
   ["cut", "forest"]               -> Right CutForest
-  ["inspect", "branch", "oak"]    -> Right $ InspectBranch Oak
-  ["inspect", "branch", "pine"]   -> Right $ InspectBranch Pine
-  ["inspect", "branch", "birch"]  -> Right $ InspectBranch Birch
-  ["inspect", "branch", "marple"] -> Right $ InspectBranch Marple
-  ["inspect", "oak"]              -> Right $ InspectTree Oak
-  ["inspect", "pine"]             -> Right $ InspectTree Pine
-  ["inspect", "birch"]            -> Right $ InspectTree Birch
-  ["inspect", "marple"]           -> Right $ InspectTree Marple
+  ["inspect", "branch", treeName] -> parseInspectBranch treeName
+  ["inspect", "branches", treeName] -> parseInspectBranches treeName
   ["inspect", "forest"]           -> Right InspectForest
+  ["inspect", treeName]           -> parseInspectTree treeName
   _                               -> Left "Invalid command"
 
--- Example forest for parsing "plant forest"
+-- Example forest for "plant forest"
 exampleForest :: Forest
-exampleForest = [Tree Oak [Branch [Leaf]], Tree Pine [Branch [Leaf]]]
+exampleForest = [Tree Oak (SingleBranch (Branch [Leaf])), Tree Pine (SingleBranch (Branch [Leaf]))]
 
 -- | An entity which represents your program's state.
--- Currently it has no constructors but you can introduce
--- as many as needed.
-
--- The forest changes based on the commands.
 data State = State { forest :: Forest }
   deriving (Show, Eq)
 
--- | Creates an initial program's state.
--- It is called once when the program starts.
-
--- Creates an initial program state with an empty forest.
+-- | Initial state with an empty forest.
 emptyState :: State
 emptyState = State { forest = [] }
 
--- | Updates a state according to a query.
--- This allows your program to share the state
--- between repl iterations.
--- Right contains an optional message to print and
--- an updated program's state.
-
--- Handles state transitions based on a given query.
--- Updates the state and provides an optional message to print.
+-- | Handles state transitions based on a query.
 stateTransition :: State -> Query -> Either String (Maybe String, State)
 stateTransition st (PlantTree tree) =
   let newForest = tree : forest st
@@ -120,10 +88,24 @@ stateTransition st (PlantForest newForest) =
 stateTransition st (CutBranch tName) = 
   case findTree tName (forest st) of
     Nothing -> Left ("No such tree: " ++ show tName)
-    Just (Tree name (b:bs)) -> 
+    Just (Tree name (SingleBranch (Branch (l:ls)))) -> 
+      let newBranch = Branch ls
+          newForest = replaceTree (Tree name (SingleBranch newBranch)) (forest st)
+      in Right (Just $ "Cut a branch from " ++ show name, st { forest = newForest })
+    Just (Tree name (MultipleBranches _ bs)) -> 
       let newForest = replaceTree (Tree name bs) (forest st)
       in Right (Just $ "Cut a branch from " ++ show name, st { forest = newForest })
-    Just (Tree name []) -> Left $ show name ++ "has no branches to cut."
+    Just (Tree name _) -> Left $ show name ++ " has no branches to cut."
+
+stateTransition st (CutBranches tName) = 
+  case findTree tName (forest st) of
+    Nothing -> Left ("No such tree: " ++ show tName)
+    Just (Tree name (SingleBranch _)) -> 
+      let newForest = replaceTree (Tree name (SingleBranch (Branch []))) (forest st)
+      in Right (Just $ "Cut all branches from " ++ show name, st { forest = newForest })
+    Just (Tree name (MultipleBranches _ _)) -> 
+      let newForest = replaceTree (Tree name (SingleBranch (Branch []))) (forest st)
+      in Right (Just $ "Cut all branches from " ++ show name, st { forest = newForest })
 
 stateTransition st (CutTree name) =
   let newForest = filter (\(Tree n _) -> n /= name) (forest st)
@@ -135,12 +117,22 @@ stateTransition st CutForest =
 stateTransition st (InspectBranch tName) =
   case findTree tName (forest st) of
     Nothing -> Left ("No such tree: " ++ show tName)
-    Just (Tree name (b:_)) -> Right (Just $ "Inspecting branch of " ++ show name, st)
-    Just (Tree name []) -> Left $ show name ++ " has no branches to inspect."
+    Just (Tree name (SingleBranch (Branch leaves))) -> 
+      Right (Just $ "Inspecting a branch of " ++ show name ++ ", leaves: " ++ show (length leaves), st)
+    Just (Tree name (MultipleBranches _ _)) -> 
+      Right (Just $ "Inspecting branches of " ++ show name, st)
+
+stateTransition st (InspectBranches tName) = 
+  case findTree tName (forest st) of
+    Nothing -> Left ("No such tree: " ++ show tName)
+    Just (Tree name (MultipleBranches _ _)) -> 
+      Right (Just $ "Inspecting all branches of " ++ show name, st)
+    Just (Tree name (SingleBranch _)) -> 
+      Right (Just $ "Inspecting a single branch of " ++ show name, st)
 
 stateTransition st (InspectTree name) =
   case findTree name (forest st) of
-    Just tree -> Right (Just $ "Inspecting tree: " ++ showTreeName tree, st)
+    Just tree -> Right (Just $ "Inspecting tree:\n" ++ showTreeDetails tree, st)
     Nothing -> Left ("No such tree: " ++ show name)
 
 stateTransition st InspectForest = 
@@ -150,26 +142,25 @@ stateTransition st InspectForest =
       let detailedInfo = unlines (map showTreeDetails (forest st))
       in Right (Just $ "Forest details:\n" ++ detailedInfo, st)
 
-
 -- | Helper functions
 showTreeDetails :: Tree -> String
 showTreeDetails (Tree name branches) =
-  "Tree: " ++ show name ++
-  "\n  Number of branches: " ++ show (length branches) ++
-  "\n  " ++ unlines (map showBranchDetails branches)
+  "  Tree: " ++ show name ++
+  "\n  Number of branches: " ++ show (countBranches branches)
 
-showBranchDetails :: Branch -> String
-showBranchDetails (Branch leaves) =
-  "Branch with " ++ show (length leaves) ++ " leaves"
+countBranches :: Branches -> Int
+countBranches (SingleBranch _) = 1
+countBranches (MultipleBranches _ bs) = 1 + countBranches bs
 
 showTreeName :: Tree -> String
 showTreeName (Tree name _) = show name
 
-treeName :: Tree -> Name
-treeName (Tree name _) = name
+-- Renamed treeName to getTreeName to avoid name conflict
+getTreeName :: Tree -> Name
+getTreeName (Tree name _) = name
 
 replaceTree :: Tree -> Forest -> Forest
-replaceTree newTree = map (\t -> if treeName t == treeName newTree then newTree else t)
+replaceTree newTree = map (\t -> if getTreeName t == getTreeName newTree then newTree else t)
 
 findTree :: Name -> Forest -> Maybe Tree
 findTree _ [] = Nothing
@@ -177,7 +168,21 @@ findTree name (t@(Tree n _):ts)
   | n == name = Just t 
   | otherwise = findTree name ts
 
+parseCutBranch, parseCutBranches, parseCutTree, parseInspectBranch, parseInspectBranches, parseInspectTree :: String -> Either String Query
+parseCutBranch = mapTreeCommand CutBranch
+parseCutBranches = mapTreeCommand CutBranches
+parseCutTree = mapTreeCommand CutTree
+parseInspectBranch = mapTreeCommand InspectBranch
+parseInspectBranches = mapTreeCommand InspectBranches
+parseInspectTree = mapTreeCommand InspectTree
 
+mapTreeCommand :: (Name -> Query) -> String -> Either String Query
+mapTreeCommand cmd treeName = case treeName of
+  "oak"   -> Right $ cmd Oak
+  "pine"  -> Right $ cmd Pine
+  "birch" -> Right $ cmd Birch
+  "marple" -> Right $ cmd Marple
+  _       -> Left "Unknown tree name"
 
 -- Main REPL function
 main :: IO ()
