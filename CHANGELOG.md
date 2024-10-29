@@ -8,4 +8,10 @@ and this project adheres to the
 
 ## Unreleased
 
-## 0.1.0.0 - YYYY-MM-DD
+## 0.1.0.0 - 2024-10-29
+
+Added option 'None' to \<branches\> DT. Now it is:  
+\<branches>  ::= \<branch> | \<branch> \<branches> | None
+
+Changed command trigger to plant forest from "plant" to "plant forest":  
+"plant" \<forest> -> "plant forest" \<forest>

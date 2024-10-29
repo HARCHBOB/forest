@@ -1,12 +1,12 @@
 <forest>    ::= <tree> | <tree> <forest>
 <tree>      ::= <name> <branches>
-<branches>  ::= <branch> | <branch> <branches>
+<branches>  ::= <branch> | <branch> <branches> | None
 <branch>    ::= "branch" <leaves>
 <leaves>    ::= <leaf> | <leaf> <leaves>
 <leaf>      ::= "leaf"
 <name>      ::= "oak" | "pine" | "birch" | "maple"
 
 <command> ::= <plant_command> | <cut_command> | <inspect_command>
-<plant_command> ::= "plant" <tree> | "plant" <forest>
+<plant_command> ::= "plant" <tree> | "plant forest" <forest>
 <cut_command> ::= "cut" branch | "cut" branches | "cut" <tree> | "cut" <forest>
 <inspect_command> ::= "inspect" <branch> | "inspect" <branches> | "inspect" <tree> | "inspect" <forest>

@@ -8,7 +8,6 @@ module Lib2
     stateTransition
     ) where
 
--- | Command representation based on the BNF grammar.
 data Query
   = PlantTree Tree
   | PlantForest Forest
@@ -22,11 +21,9 @@ data Query
   | InspectForest
   deriving (Eq, Show)
 
--- | The 'Name' of a tree, following the BNF.
 data Name = Oak | Pine | Birch | Marple
   deriving (Eq, Show)
 
--- | Recursive structure of leaves and branches.
 data Leaf = Leaf
   deriving (Eq, Show)
 
@@ -36,7 +33,7 @@ data Leaves = SingleLeaf Leaf | MultipleLeaves Leaf Leaves
 data Branch = Branch Leaves
   deriving (Eq, Show)
 
-data Branches = SingleBranch Branch | MultipleBranches Branch Branches
+data Branches = SingleBranch Branch | MultipleBranches Branch Branches | None
   deriving (Eq, Show)
 
 data Tree = Tree Name Branches
@@ -46,21 +43,18 @@ type Forest = [Tree]
 
 type Parser a = String -> Either String (a, String)
 
--- Parses a specific literal string.
 parseLiteral :: String -> Parser String
 parseLiteral literal input =
   if take (length literal) input == literal
     then Right (literal, drop (length literal) input)
-    else Left $ "Expected: " ++ literal
+    else Left $ "Invalid command"
 
--- Parses a single character.
 parseChar :: Char -> Parser Char
 parseChar c (x:xs)
   | c == x = Right (c, xs)
   | otherwise = Left $ "Expected character: " ++ [c]
 parseChar _ [] = Left "Unexpected end of input"
 
--- Parses whitespace (like spaces).
 parseWhitespace :: Parser String
 parseWhitespace input =
   let (spaces, rest) = span (== ' ') input
@@ -72,16 +66,6 @@ fmap f p input =
     Right (res, rest) -> Right (f res, rest)
     Left err -> Left err
 
-and2 :: (a -> b -> c) -> Parser a -> Parser b -> Parser c
-and2 f p1 p2 input =
-  case p1 input of
-    Right (res1, rest1) ->
-      case p2 rest1 of
-        Right (res2, rest2) -> Right (f res1 res2, rest2)
-        Left err            -> Left err
-    Left err -> Left err
-
--- Combines three parsers in sequence
 and3 :: (a -> b -> c -> d) -> Parser a -> Parser b -> Parser c -> Parser d
 and3 f p1 p2 p3 input =
   case p1 input of
@@ -101,7 +85,7 @@ and5 f p1 p2 p3 p4 p5 input =
       case p2 rest1 of
         Right (res2, rest2) ->
           case p3 rest2 of
-            Right (res3, rest3) -> 
+            Right (res3, rest3) ->
               case p4 rest3 of
                 Right (res4, rest4) ->
                   case p5 rest4 of
@@ -118,14 +102,31 @@ orElse p1 p2 input =
     Right res -> Right res
     Left _    -> p2 input
 
+or3 :: Parser a -> Parser a -> Parser a -> Parser a
+or3 p1 p2 p3 input = 
+  case p1 input of
+    Right res1 -> Right res1
+    Left _ -> case p2 input of
+      Right res2 -> Right res2
+      Left _ -> p3 input
+
+or4 :: Parser a -> Parser a -> Parser a -> Parser a -> Parser a
+or4 p1 p2 p3 p4 input = 
+  case p1 input of
+    Right res1 -> Right res1
+    Left _ -> case p2 input of
+      Right res2 -> Right res2
+      Left _ -> case p3 input of
+        Right res3 -> Right res3
+        Left _ -> p4 input
+
 orN :: [Parser Query] -> Parser Query
 orN [] _ = Left "Invalid command"
 orN (p:ps) input = case p input of
   Right res -> Right res
   Left _    -> orN ps input
 
--- Parser for tree names
--- <tree> ::= <name> <branches>
+-- <name> ::= "oak" | "pine" | "birch" | "maple"
 parseName :: Parser Name
 parseName input = case words input of
   ("oak":rest)   -> Right (Oak, unwords rest)
@@ -134,63 +135,95 @@ parseName input = case words input of
   ("marple":rest) -> Right (Marple, unwords rest)
   _              -> Left "Unknown tree name"
 
--- Leaf parser
 -- <leaf> ::= "leaf"
 parseLeaf :: Parser Leaf
 parseLeaf = Lib2.fmap (const Leaf) (parseLiteral "leaf")
 
--- Leaves parser
 -- <leaves> ::= <leaf> | <leaf> <leaves>
 parseLeaves :: Parser Leaves
-parseLeaves = orElse parseMultipleLeaves parseSingleLeaf
+parseLeaves input =
+  case parseMultipleLeaves input of
+    Right (leaves, rest) -> Right (leaves, rest)
+    Left _               -> parseSingleLeaf input
 
 parseSingleLeaf :: Parser Leaves
-parseSingleLeaf = Lib2.fmap SingleLeaf parseLeaf
+parseSingleLeaf input =
+  case parseLeaf input of
+    Right (_, rest) -> Right (SingleLeaf Leaf, rest)
+    Left err        -> Left err
 
 parseMultipleLeaves :: Parser Leaves
-parseMultipleLeaves =
-  and2 MultipleLeaves parseLeaf parseLeaves
+parseMultipleLeaves input =
+  case parseLeaf input of
+    Right (leaf, rest1) ->
+      case parseWhitespace rest1 of
+        Right (_, rest2) ->
+          case parseLeaves rest2 of
+            Right (leaves, rest3) -> Right (MultipleLeaves leaf leaves, rest3)
+            Left err -> Left err
+        Left err -> Left err
+    Left err -> Left err
 
--- Parses a single branch, which is "branch" followed by leaves
 -- <branch> ::= "branch" <leaves>
 parseBranch :: Parser Branch
-parseBranch = 
-  and2 
-    (\_ leaves -> Branch leaves) 
-    (parseLiteral "branch") 
+parseBranch =
+  and3
+    (\_ _ leaves -> Branch leaves)
+    (parseLiteral "branch")
+    parseWhitespace
     parseLeaves
 
--- Parses either a single branch or multiple branches
 -- <branches> ::= <branch> | <branch> <branches>
 parseBranches :: Parser Branches
-parseBranches =
-  orElse parseMultipleBranches parseSingleBranch
+parseBranches input =
+  case parseMultipleBranches input of
+    Right (branches, rest) -> Right (branches, rest)
+    Left _                  -> parseSingleBranch input
 
--- Parses a single branch (terminal case for branches)
 parseSingleBranch :: Parser Branches
-parseSingleBranch = Lib2.fmap SingleBranch parseBranch
+parseSingleBranch input =
+  case parseBranch input of
+    Right (branch, rest) -> Right (SingleBranch branch, rest)
+    Left err             -> Left err
 
--- Parses multiple branches recursively
 parseMultipleBranches :: Parser Branches
-parseMultipleBranches = and2 MultipleBranches parseBranch parseBranches
+parseMultipleBranches input =
+  case parseBranch input of
+    Right (branch, rest1) ->
+      case parseWhitespace rest1 of
+        Right (_, rest2) ->
+          case parseBranches rest2 of
+            Right (branches, rest3) -> Right (MultipleBranches branch branches, rest3)
+            Left err -> Left err
+        Left err -> Left err
+    Left err -> Left err
 
--- Parser for a tree (a name and its branches)
 -- <tree> ::= <name> <branches>
 parseTree :: Parser Tree
 parseTree input =
   case parseName input of
-    Right (name, rest) -> Right (Tree name (SingleBranch (Branch (SingleLeaf Leaf))), rest)
-    Left err           -> Left err
+    Right (name, rest) ->
+      case parseBranches rest of
+        Right (branches, rest2) -> Right (Tree name branches, rest2)
+        Left err -> Left err
+    Left err -> Left err
+
+-- <forest> ::= <tree> | <tree> <forest>
+parseForest :: Parser Forest
+parseForest input =
+  case parseTree input of
+    Right (tree, rest1) ->
+      case parseWhitespace rest1 of
+        Right (_, rest2) ->
+          case parseForest rest2 of
+            Right (forest1, rest3) ->
+              Right (tree : forest1, rest3)  -- Combine tree with the parsed forest
+            Left _ -> Right ([tree], rest2) -- No more trees, return single tree as forest
+        Left err -> Left err
+    Left err -> Left err
+
 
 -- Plant command parser
-parsePlantDefaultTree :: Parser Query
-parsePlantDefaultTree =
-  and3
-    (\_ _ tree -> PlantTree tree)
-    (parseLiteral "plant")
-    parseWhitespace
-    parseTree
-
 parsePlantTree :: Parser Query
 parsePlantTree =
   and3
@@ -202,9 +235,21 @@ parsePlantTree =
 -- Plant forest parser
 parsePlantForest :: Parser Query
 parsePlantForest =
-  and3
-    (\_ _ _ -> PlantForest exampleForest)
+  and5
+    (\_ _ _ _ forest1 -> PlantForest forest1)
     (parseLiteral "plant")
+    parseWhitespace
+    (parseLiteral "forest")
+    parseWhitespace
+    parseForest
+
+parsePlantExampleForest :: Parser Query
+parsePlantExampleForest =
+  and5
+    (\_ _ _ _ _ -> PlantForest exampleForest)
+    (parseLiteral "plant")
+    parseWhitespace
+    (parseLiteral "example")
     parseWhitespace
     (parseLiteral "forest")
 
@@ -282,21 +327,40 @@ parseInspectForest =
     parseWhitespace
     (parseLiteral "forest")
 
+parsePlantCommand :: Parser Query
+parsePlantCommand = 
+  or3
+    parsePlantTree
+    parsePlantForest
+    parsePlantExampleForest
+
+parseCutCommand :: Parser Query
+parseCutCommand = 
+  or4
+    parseCutBranch
+    parseCutBranches
+    parseCutTree
+    parseCutForest
+
+parseInspectCommand :: Parser Query
+parseInspectCommand =
+  or4
+    parseInspectBranch
+    parseInspectBranches
+    parseInspectTree
+    parseInspectForest
+
+parseCommands :: Parser Query
+parseCommands = 
+  or3
+    parsePlantCommand
+    parseCutCommand
+    parseInspectCommand
+
 parseQuery :: String -> Either String Query
 parseQuery "" = Left "Command cannot be empty"
 parseQuery input =
-  case orN [
-    parsePlantDefaultTree,
-    parsePlantForest,
-    parseCutBranch,
-    parseCutBranches,
-    parseCutTree,
-    parseCutForest,
-    parseInspectBranch,
-    parseInspectBranches,
-    parseInspectTree,
-    parseInspectForest
-  ] input of
+  case parseCommands input of
   Right (query, _) -> Right query
   Left err         -> Left err
 
@@ -304,7 +368,6 @@ parseQuery input =
 exampleForest :: Forest
 exampleForest = [Tree Oak (SingleBranch (Branch (SingleLeaf Leaf))), Tree Pine (SingleBranch (Branch (SingleLeaf Leaf)))]
 
--- | An entity which represents your program's state.
 data State = State { forest :: Forest }
   deriving (Show, Eq)
 
@@ -312,7 +375,7 @@ data State = State { forest :: Forest }
 emptyState :: State
 emptyState = State { forest = [] }
 
--- | Handles state transitions based on a query.
+
 stateTransition :: State -> Query -> Either String (Maybe String, State)
 stateTransition st (PlantTree tree) =
   let newForest = tree : forest st
@@ -325,24 +388,22 @@ stateTransition st (PlantForest newForest) =
 stateTransition st (CutBranch tName) =
   case findTree tName (forest st) of
     Nothing -> Left ("No such tree: " ++ show tName)
-    Just (Tree name (SingleBranch (Branch (MultipleLeaves _ ls)))) ->
-      let newBranch = Branch ls
-          newForest = replaceTree (Tree name (SingleBranch newBranch)) (forest st)
-      in Right (Just $ "Cut a branch from " ++ show name, st { forest = newForest })
-    Just (Tree name (SingleBranch (Branch (SingleLeaf _)))) ->
-      Left $ show name ++ " has no branches to cut."
-    Just (Tree name (MultipleBranches _ bs)) ->
-      let newForest = replaceTree (Tree name bs) (forest st)
-      in Right (Just $ "Cut a branch from " ++ show name, st { forest = newForest })
+    Just (Tree name None) ->
+      Right (Just $ "No branches to cut on " ++ show name, st)
+    Just (Tree name (SingleBranch _)) ->
+      let newForest = replaceTree (Tree name None) (forest st)
+      in Right (Just $ "Cut the only branch from " ++ show name, st { forest = newForest })
+    Just (Tree name (MultipleBranches _ remainingBranches)) ->
+      let newForest = replaceTree (Tree name remainingBranches) (forest st)
+      in Right (Just $ "Cut the first branch from " ++ show name, st { forest = newForest })
 
 stateTransition st (CutBranches tName) =
   case findTree tName (forest st) of
     Nothing -> Left ("No such tree: " ++ show tName)
-    Just (Tree name (SingleBranch _)) ->
-      let newForest = replaceTree (Tree name (SingleBranch (Branch (SingleLeaf Leaf)))) (forest st)
-      in Right (Just $ "Cut all branches from " ++ show name, st { forest = newForest })
-    Just (Tree name (MultipleBranches _ _)) ->
-      let newForest = replaceTree (Tree name (SingleBranch (Branch (SingleLeaf Leaf)))) (forest st)
+    Just (Tree name None) ->
+      Right (Just $ "No branches to cut on " ++ show name, st)
+    Just (Tree name _) ->
+      let newForest = replaceTree (Tree name None) (forest st)
       in Right (Just $ "Cut all branches from " ++ show name, st { forest = newForest })
 
 stateTransition st (CutTree name) =
@@ -355,18 +416,22 @@ stateTransition st CutForest =
 stateTransition st (InspectBranch tName) =
   case findTree tName (forest st) of
     Nothing -> Left ("No such tree: " ++ show tName)
-    Just (Tree name (SingleBranch (Branch leaves))) ->
-      Right (Just $ "Inspecting a branch of " ++ show name ++ ", leaves: " ++ show (countLeaves leaves), st)
-    Just (Tree name (MultipleBranches _ _)) ->
-      Right (Just $ "Inspecting branches of " ++ show name, st)
+    Just (Tree name None) ->
+      Right (Just $ "No branches on " ++ show name, st)
+    Just (Tree name (SingleBranch branch)) ->
+      Right (Just $ "Single branch found on " ++ show name ++ ": " ++ show branch, st)
+    Just (Tree name (MultipleBranches branch _)) ->
+      Right (Just $ "First branch found on " ++ show name ++ ": " ++ show branch, st)
 
 stateTransition st (InspectBranches tName) =
   case findTree tName (forest st) of
     Nothing -> Left ("No such tree: " ++ show tName)
-    Just (Tree name (MultipleBranches _ _)) ->
-      Right (Just $ "Inspecting all branches of " ++ show name, st)
-    Just (Tree name (SingleBranch _)) ->
-      Right (Just $ "Inspecting a single branch of " ++ show name, st)
+    Just (Tree name None) ->
+      Right (Just $ "No branches on " ++ show name, st)
+    Just (Tree name (SingleBranch branch)) ->
+      Right (Just $ "One branch on " ++ show name ++ ": " ++ show branch, st)
+    Just (Tree name (MultipleBranches branch branches)) ->
+      Right (Just $ "Multiple branches on " ++ show name ++ ": " ++ showAllBranches branch branches, st)
 
 stateTransition st (InspectTree name) =
   case findTree name (forest st) of
@@ -386,11 +451,17 @@ showTreeDetails (Tree name branches) =
   "  Tree: " ++ show name ++
   "\n  Number of branches: " ++ show (countBranches branches)
 
-countBranches :: Branches -> Int
-
 countLeaves :: Leaves -> Int
 countLeaves (SingleLeaf _) = 1
 countLeaves (MultipleLeaves _ ls) = 1 + countLeaves ls
+
+showAllBranches :: Branch -> Branches -> String
+showAllBranches branch None = show branch
+showAllBranches branch (SingleBranch b) = show branch ++ ", " ++ show b
+showAllBranches branch (MultipleBranches b bs) = show branch ++ ", " ++ showAllBranches b bs
+
+countBranches :: Branches -> Int
+countBranches None = 0
 countBranches (SingleBranch _) = 1
 countBranches (MultipleBranches _ bs) = 1 + countBranches bs
 
