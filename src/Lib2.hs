@@ -8,6 +8,9 @@ module Lib2
     stateTransition
     ) where
 
+--import Debug.Trace (trace)
+--trace ("Parsed name: " ++ show name ++ ", Remaining: " ++ show rest1) $
+
 data Query
   = PlantTree Tree
   | PlantForest Forest
@@ -126,14 +129,19 @@ orN (p:ps) input = case p input of
   Right res -> Right res
   Left _    -> orN ps input
 
+stripPrefix :: String -> String -> Maybe String
+stripPrefix prefix str
+  | take (length prefix) str == prefix = Just (drop (length prefix) str)
+  | otherwise                           = Nothing
+
 -- <name> ::= "oak" | "pine" | "birch" | "maple"
 parseName :: Parser Name
-parseName input = case words input of
-  ("oak":rest)   -> Right (Oak, unwords rest)
-  ("pine":rest)  -> Right (Pine, unwords rest)
-  ("birch":rest) -> Right (Birch, unwords rest)
-  ("marple":rest) -> Right (Marple, unwords rest)
-  _              -> Left "Unknown tree name"
+parseName input
+  | Just rest <- stripPrefix "oak" input   = Right (Oak, rest)
+  | Just rest <- stripPrefix "pine" input  = Right (Pine, rest)
+  | Just rest <- stripPrefix "birch" input = Right (Birch, rest)
+  | Just rest <- stripPrefix "marple" input = Right (Marple, rest)
+  | otherwise                              = Left "Unknown tree name"
 
 -- <leaf> ::= "leaf"
 parseLeaf :: Parser Leaf
@@ -202,9 +210,12 @@ parseMultipleBranches input =
 parseTree :: Parser Tree
 parseTree input =
   case parseName input of
-    Right (name, rest) ->
-      case parseBranches rest of
-        Right (branches, rest2) -> Right (Tree name branches, rest2)
+    Right (name, rest1) ->
+      case parseWhitespace rest1 of
+        Right (_, rest2) ->
+          case parseBranches rest2 of
+            Right (branches, rest3) -> Right (Tree name branches, rest3)
+            Left err -> Left err
         Left err -> Left err
     Left err -> Left err
 
