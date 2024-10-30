@@ -1,0 +1,16 @@
+Plant:
+    plant oak branch leaf
+    plant pine branch leaf leaf branch leaf 
+    plant birch branch leaf branch leaf branch leaf leaf leaf leaf
+
+Cut:
+    cut branch oak
+    cut branches oak
+    cut oak
+    cut forest
+
+Inspect:
+    inspect branch oak
+    inspect branches oak
+    inspect oak
+    inspect forest

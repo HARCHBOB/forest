@@ -483,7 +483,9 @@ getTreeName :: Tree -> Name
 getTreeName (Tree name _) = name
 
 replaceTree :: Tree -> Forest -> Forest
-replaceTree newTree = map (\t -> if getTreeName t == getTreeName newTree then newTree else t)
+replaceTree newTree = map (\t -> case getTreeName t == getTreeName newTree of
+    True  -> newTree
+    False -> t)
 
 findTree :: Name -> Forest -> Maybe Tree
 findTree _ [] = Nothing
