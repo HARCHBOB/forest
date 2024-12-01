@@ -77,4 +77,3 @@ game =
         putStrLn "What is your name?"
         name' <- getLine
         return (pureBusinessLogic name')
-
