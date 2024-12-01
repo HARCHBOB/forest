@@ -2,9 +2,6 @@
 module Lessons.Lesson05 () where
 
 import Lessons.Lesson04(Parser, parseNumber, and2', parseChar)
-import Text.Read (Lexeme(String))
-
-
 
 -- listOfNumbers := number (,number)*
 --                                  ^ many
@@ -80,4 +77,3 @@ game =
         putStrLn "What is your name?"
         name' <- getLine
         return (pureBusinessLogic name')
-
