@@ -6,7 +6,8 @@
 <leaf>      ::= "leaf"
 <name>      ::= "oak" | "pine" | "birch" | "maple"
 
-<command> ::= <plant_command> | <cut_command> | <inspect_command>
+<command> ::= <plant_command> | <cut_command> | <inspect_command> | "load" | "save"
 <plant_command> ::= "plant" <tree> | "plant forest" <forest>
 <cut_command> ::= "cut" branch | "cut" branches | "cut" <tree> | "cut" <forest>
 <inspect_command> ::= "inspect" <branch> | "inspect" <branches> | "inspect" <tree> | "inspect" <forest>
+<batch_command> ::= "BEGIN" <command> ";" <command> ";" ... "END"

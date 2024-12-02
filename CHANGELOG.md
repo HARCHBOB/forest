@@ -8,6 +8,11 @@ and this project adheres to the
 
 ## Unreleased
 
+### Added
+- Support for batch commands using BEGIN ... END syntax.
+- New commands: 'load' and 'save' to read/persist program's state from/to a file.
+- Property tests for state marshalling.
+
 ## 0.1.0.0 - 2024-10-29
 
 Added option 'None' to \<branches\> DT. Now it is:  

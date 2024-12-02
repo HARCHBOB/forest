@@ -42,6 +42,7 @@ library:
   - async
   - QuickCheck
   - transformers
+  - directory
   - strict
 
 executables:

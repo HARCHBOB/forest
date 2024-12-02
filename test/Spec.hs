@@ -8,6 +8,9 @@ import Data.Ord
 
 import Lib1 qualified
 import Lib2 qualified
+import Lib3 qualified
+import Lib2 (State, emptyState, stateTransition, Query(..))
+import Lib3 (renderStatements, parseStatements)
 
 main :: IO ()
 main = defaultMain tests
@@ -26,8 +29,11 @@ unitTests = testGroup "Lib1 tests"
   ]
 
 propertyTests :: TestTree
-propertyTests = testGroup "some meaningful name"
+propertyTests = testGroup "Property tests"
   [
     QC.testProperty "sort == sort . reverse" $
-      \list -> sort (list :: [Int]) == sort (reverse list)
+      \list -> sort (list :: [Int]) == sort (reverse list),
+    QC.testProperty "renderStatements . parseStatements == id" $
+      \s -> let statements = renderStatements s
+            in parseStatements statements == Right (s, "")
   ]

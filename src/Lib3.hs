@@ -1,6 +1,6 @@
 {-# LANGUAGE InstanceSigs #-}
 module Lib3
-    ( stateTransition,
+    ( Lib3.stateTransition,
     StorageOp (..),
     storageOpLoop,
     parseCommand,
@@ -9,9 +9,15 @@ module Lib3
     renderStatements
     ) where
 
-import Control.Concurrent ( Chan )
-import Control.Concurrent.STM(STM, TVar)
-import qualified Lib2
+import Control.Applicative (Alternative (many), (<|>))
+import Control.Concurrent ( Chan, writeChan, readChan )
+import Control.Concurrent.STM(STM, TVar, atomically, modifyTVar', readTVar, writeTVar, readTVarIO)
+import Control.Monad.IO.Class (liftIO)
+import System.IO (withFile, IOMode(ReadMode, WriteMode), hGetContents, hPutStr)
+import System.Directory (doesFileExist)
+import Data.Either (isRight, rights)
+import Lib2
+import Parsers
 
 data StorageOp = Save String (Chan ()) | Load (Chan String)
 -- | This function is started from main
@@ -21,8 +27,23 @@ data StorageOp = Save String (Chan ()) | Load (Chan String)
 -- to a channel provided in a request.
 -- Modify as needed.
 storageOpLoop :: Chan StorageOp -> IO ()
-storageOpLoop _ = do
-  return $ error "Not implemented 1"
+storageOpLoop chan = loop
+  where
+    loop = do
+      op <- readChan chan
+      case op of
+        Save content responseChan -> do
+          writeFile "state.txt" content
+          writeChan responseChan ()
+          loop
+        Load responseChan -> do
+          fileExists <- doesFileExist "state.txt"
+          if fileExists
+            then do
+              content <- withFile "state.txt" ReadMode hGetContents
+              writeChan responseChan content
+            else writeChan responseChan ""
+          loop
 
 data Statements = Batch [Lib2.Query] |
                Single Lib2.Query
@@ -35,19 +56,56 @@ data Command = StatementCommand Statements |
 
 -- | Parses user's input.
 parseCommand :: String -> Either String (Command, String)
-parseCommand _ = Left "Not implemented 2"
+parseCommand input =
+  case parseStatements input of
+    Right (statements, rest) -> Right (StatementCommand statements, rest)
+    Left err -> case words input of
+      ("load":_) -> Right (LoadCommand, "")
+      ("save":_) -> Right (SaveCommand, "")
+      _ -> Left "Unknown command"
+
+statements :: Parser Statements
+statements =
+  ( do
+      _ <- parseLiteral "BEGIN"
+      _ <- parseLiteral "\n"
+      q <-
+        many
+          ( do
+              q <- Parsers.parseCommands
+              case q of
+                Right query -> do
+                  _ <- parseLiteral ";"
+                  _ <- parseLiteral "\n"
+                  return query
+                Left err -> fail err
+          )
+      _ <- parseLiteral "END"
+    <|> (do
+            q <- Parsers.parseCommands
+            case q of
+              Right query -> return (Single query)
+              Left err -> fail err)
+      return $ Batch q
+  )
+    <|> (Single <$> Parsers.parseCommands)
 
 -- | Parses Statement.
 -- Must be used in parseCommand.
 -- Reuse Lib2 as much as you can.
 -- You can change Lib2.parseQuery signature if needed.
 parseStatements :: String -> Either String (Statements, String)
-parseStatements _ = Left "Not implemented 3"
+parseStatements input =
+  let queries = lines input
+      parsedQueries = map parseQuery queries
+  in if all isRight parsedQueries
+     then Right (Batch (rights parsedQueries), "")
+     else Left ("Failed to parse some queries" ++ show parsedQueries)
 
 -- | Converts program's state into Statements
 -- (probably a batch, but might be a single query)
 marshallState :: Lib2.State -> Statements
-marshallState _ = error "Not implemented 4"
+marshallState state = Batch [PlantForest (Lib2.forest state)]
 
 -- | Renders Statements into a String which
 -- can be parsed back into Statements by parseStatements
@@ -56,7 +114,8 @@ marshallState _ = error "Not implemented 4"
 -- Must have a property test
 -- for all s: parseStatements (renderStatements s) == Right(s, "")
 renderStatements :: Statements -> String
-renderStatements _ = error "Not implemented 5"
+renderStatements (Batch queries) = unlines (map show queries)
+renderStatements (Single query) = show query
 
 -- | Updates a state according to a command.
 -- Performs file IO via ioChan if needed.
@@ -68,6 +127,43 @@ renderStatements _ = error "Not implemented 5"
 -- State update must be executed atomically (STM).
 -- Right contains an optional message to print, updated state
 -- is stored in transactinal variable
-stateTransition :: TVar Lib2.State -> Command -> Chan StorageOp ->
-                   IO (Either String (Maybe String))
-stateTransition _ _ ioChan = return $ Left "Not implemented 6"
+stateTransition :: TVar Lib2.State -> Command -> Chan StorageOp -> IO (Either String (Maybe String))
+stateTransition tvarState command ioChan = case command of
+  StatementCommand statements -> atomically $ do
+    state <- readTVar tvarState
+    let queries = case statements of
+                    Batch qs -> qs
+                    Single q -> [q]
+    let results = map (Lib2.stateTransition state) queries
+    if all isRight results
+      then do
+        let newState = foldl (\_ result -> case result of
+                                             Right (_, st) -> st
+                                             Left _ -> state) state results
+        writeTVar tvarState newState
+        return $ Right (Just ("Batch executed successfully" ++ " " ++ show newState))
+      else return $ Left "Failed to execute batch"
+  LoadCommand -> do
+    contents <- readFile "state.txt"
+    case parseStatements contents of
+      Right (statements, _) -> atomically $ do
+        state <- readTVar tvarState
+        let queries = case statements of
+                        Batch qs -> qs
+                        Single q -> [q]
+        let results = map (Lib2.stateTransition state) queries
+        if all isRight results
+          then do
+            let newState = foldl (\s result -> case result of
+                                                Right (_, st) -> st
+                                                Left _ -> s) state results
+            writeTVar tvarState newState
+            return $ Right (Just "State loaded successfully")
+          else return $ Left "Failed to load state"
+      Left err -> return $ Left err
+  SaveCommand -> do
+    state <- readTVarIO tvarState
+    let statements = marshallState state
+    liftIO $ withFile "state.txt" WriteMode $ \h -> do
+      hPutStr h (renderStatements statements)
+    return $ Right (Just "State saved successfully")
