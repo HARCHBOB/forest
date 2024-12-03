@@ -18,6 +18,7 @@ import System.Directory (doesFileExist)
 import Data.Either (isRight, rights)
 import Lib2
 import Parsers
+import qualified Parsers as Lib2
 
 data StorageOp = Save String (Chan ()) | Load (Chan String)
 -- | This function is started from main
@@ -56,13 +57,17 @@ data Command = StatementCommand Statements |
 
 -- | Parses user's input.
 parseCommand :: String -> Either String (Command, String)
-parseCommand input =
-  case parseStatements input of
-    Right (statements, rest) -> Right (StatementCommand statements, rest)
-    Left err -> case words input of
-      ("load":_) -> Right (LoadCommand, "")
-      ("save":_) -> Right (SaveCommand, "")
-      _ -> Left "Unknown command"
+parseCommand = parse (StatementCommand <$> statements <|> parseLoad <|> parseSave)
+
+parseLoad :: Parser Command
+parseLoad = do
+  _ <- parseLiteral "load"
+  return LoadCommand
+
+parseSave :: Parser Command
+parseSave = do
+  _ <- parseLiteral "save"
+  return SaveCommand
 
 statements :: Parser Statements
 statements =
@@ -72,35 +77,23 @@ statements =
       q <-
         many
           ( do
-              q <- Parsers.parseCommands
-              case q of
-                Right query -> do
-                  _ <- parseLiteral ";"
-                  _ <- parseLiteral "\n"
-                  return query
-                Left err -> fail err
+              q <- Lib2.parseCommands
+              _ <- parseLiteral ";"
+              _ <- parseLiteral "\n"
+              return q
           )
       _ <- parseLiteral "END"
-    <|> (do
-            q <- Parsers.parseCommands
-            case q of
-              Right query -> return (Single query)
-              Left err -> fail err)
+      _ <- parseLiteral "\n"
       return $ Batch q
   )
-    <|> (Single <$> Parsers.parseCommands)
+    <|> (Single <$> Lib2.parseCommands)
 
 -- | Parses Statement.
 -- Must be used in parseCommand.
 -- Reuse Lib2 as much as you can.
 -- You can change Lib2.parseQuery signature if needed.
 parseStatements :: String -> Either String (Statements, String)
-parseStatements input =
-  let queries = lines input
-      parsedQueries = map parseQuery queries
-  in if all isRight parsedQueries
-     then Right (Batch (rights parsedQueries), "")
-     else Left ("Failed to parse some queries" ++ show parsedQueries)
+parseStatements = parse statements
 
 -- | Converts program's state into Statements
 -- (probably a batch, but might be a single query)

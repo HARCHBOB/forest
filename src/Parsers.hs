@@ -1,4 +1,5 @@
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE MultiWayIf #-}
 module Parsers
     ( Query(..),
     Forest,
@@ -9,6 +10,7 @@ module Parsers
     Leaf(..),
     Name(..),
     Parser,
+    parse,
     parseLiteral,
     parseChar,
     parseWhitespace,
@@ -30,24 +32,11 @@ module Parsers
     parseMultipleBranches,
     parseTree,
     parseForest,
-    --parsePlantTree,
-    --parsePlantForest,
-    --parsePlantExampleForest,
-    --parseCutBranch,
-    --parseCutBranches,
-    --parseCutTree,
-    --parseCutForest,
-    --parseInspectBranch,
-    --parseInspectBranches,
-    --parseInspectTree,
-    --parseInspectForest,
-    --parsePlantCommand,
-    --parseCutCommand,
-    --parseInspectCommand,
     parseCommands
     ) where
 
 import Debug.Trace (trace)
+import Control.Applicative
 --trace ("Parsed name: " ++ show name ++ ", Remaining: " ++ show rest1) $
 
 data Query
@@ -83,58 +72,89 @@ data Tree = Tree Name Branches
 
 type Forest = [Tree]
 
-type Parser a = String -> Either String (a, String)
+--type Parser a = String -> Either String (a, String)
+
+newtype Parser a = P {parse :: String -> Either String (a, String)}
+
+instance Functor Parser where
+  fmap :: (a -> b) -> Parser a -> Parser b
+  fmap f p = do
+    a <- p
+    return $ f a
+
+instance Applicative Parser where
+  pure :: a -> Parser a
+  pure x = P $ \str -> Right (x, str)
+  (<*>) :: Parser (a -> b) -> Parser a -> Parser b
+  pf <*> pa = do
+    f <- pf
+    f <$> pa
+
+instance Alternative Parser where
+  empty :: Parser a
+  empty = P $ \_ -> Left "Failed to parse"
+  (<|>) :: Parser a -> Parser a -> Parser a
+  (<|>) p1 p2 = P $ \str -> case parse p1 str of
+    Right (v, r) -> Right (v, r)
+    Left _ -> parse p2 str
+
+instance Monad Parser where
+  (>>=) :: Parser a -> (a -> Parser b) -> Parser b
+  (>>=) pa f = P $ \str -> case parse pa str of
+    Left e -> Left e
+    Right (a, r) -> parse (f a) r
 
 -- Example forest for "plant forest"
 exampleForest :: Forest
 exampleForest = [Tree Oak (SingleBranch (Branch (SingleLeaf Leaf))), Tree Pine (SingleBranch (Branch (SingleLeaf Leaf)))]
 
 parseLiteral :: String -> Parser String
-parseLiteral literal input =
+parseLiteral literal = P $ \input ->
   if take (length literal) input == literal
     then Right (literal, drop (length literal) input)
     else Left "Invalid command"
 
 parseChar :: Char -> Parser Char
-parseChar c (x:xs)
-  | c == x = Right (c, xs)
-  | otherwise = Left $ "Expected character: " ++ [c]
-parseChar _ [] = Left "Unexpected end of input"
+parseChar c = P $ \input -> case input of
+  (x:xs)
+    | c == x -> Right (c, xs)
+    | otherwise -> Left $ "Expected character: " ++ [c]
+  [] -> Left "Unexpected end of input"
 
 parseWhitespace :: Parser String
-parseWhitespace input =
+parseWhitespace = P $ \input ->
   let (spaces, rest) = span (== ' ') input
    in Right (spaces, rest)
 
 fmap :: (a -> b) -> Parser a -> Parser b
-fmap f p input =
+fmap f (P p) = P $ \input ->
   case p input of
     Right (res, rest) -> Right (f res, rest)
     Left err -> Left err
 
 and3 :: (a -> b -> c -> d) -> Parser a -> Parser b -> Parser c -> Parser d
-and3 f p1 p2 p3 input =
-  case p1 input of
+and3 f p1 p2 p3 = P $ \input ->
+  case parse p1 input of
     Right (res1, rest1) ->
-      case p2 rest1 of
+      case parse p2 rest1 of
         Right (res2, rest2) ->
-          case p3 rest2 of
+          case parse p3 rest2 of
             Right (res3, rest3) -> Right (f res1 res2 res3, rest3)
             Left err -> Left err
         Left err -> Left err
     Left err -> Left err
 
 and5 :: (a -> b -> c -> d -> e -> f) -> Parser a -> Parser b -> Parser c -> Parser d -> Parser e -> Parser f
-and5 f p1 p2 p3 p4 p5 input =
-  case p1 input of
+and5 f p1 p2 p3 p4 p5 = P $ \input ->
+  case parse p1 input of
     Right (res1, rest1) ->
-      case p2 rest1 of
+      case parse p2 rest1 of
         Right (res2, rest2) ->
-          case p3 rest2 of
+          case parse p3 rest2 of
             Right (res3, rest3) ->
-              case p4 rest3 of
+              case parse p4 rest3 of
                 Right (res4, rest4) ->
-                  case p5 rest4 of
+                  case parse p5 rest4 of
                     Right (res5, rest5) -> Right (f res1 res2 res3 res4 res5, rest5)
                     Left err -> Left err
                 Left err -> Left err
@@ -143,13 +163,13 @@ and5 f p1 p2 p3 p4 p5 input =
     Left err -> Left err
 
 orElse :: Parser a -> Parser a -> Parser a
-orElse p1 p2 input =
+orElse (P p1) (P p2) = P $ \input ->
   case p1 input of
     Right res -> Right res
     Left _    -> p2 input
 
 or3 :: Parser a -> Parser a -> Parser a -> Parser a
-or3 p1 p2 p3 input =
+or3 (P p1) (P p2) (P p3) = P $ \input ->
   case p1 input of
     Right res1 -> Right res1
     Left _ -> case p2 input of
@@ -157,7 +177,7 @@ or3 p1 p2 p3 input =
       Left _ -> p3 input
 
 or4 :: Parser a -> Parser a -> Parser a -> Parser a -> Parser a
-or4 p1 p2 p3 p4 input =
+or4 (P p1) (P p2) (P p3) (P p4) = P $ \input ->
   case p1 input of
     Right res1 -> Right res1
     Left _ -> case p2 input of
@@ -167,10 +187,10 @@ or4 p1 p2 p3 p4 input =
         Left _ -> p4 input
 
 orN :: [Parser Query] -> Parser Query
-orN [] _ = Left "Invalid command"
-orN (p:ps) input = case p input of
+orN [] = P $ \_ -> Left "Invalid command"
+orN (p:ps) = P $ \input -> case parse p input of
   Right res -> Right res
-  Left _    -> orN ps input
+  Left _    -> parse (orN ps) input
 
 stripPrefix :: String -> String -> Maybe String
 stripPrefix prefix str
@@ -179,12 +199,12 @@ stripPrefix prefix str
 
 -- <name> ::= "oak" | "pine" | "birch" | "maple"
 parseName :: Parser Name
-parseName input
-  | Just rest <- stripPrefix "oak" input   = Right (Oak, rest)
-  | Just rest <- stripPrefix "pine" input  = Right (Pine, rest)
-  | Just rest <- stripPrefix "birch" input = Right (Birch, rest)
-  | Just rest <- stripPrefix "marple" input = Right (Marple, rest)
-  | otherwise                              = Left "Unknown tree name"
+parseName = P $ \input ->
+  if | Just rest <- stripPrefix "oak" input   -> Right (Oak, rest)
+     | Just rest <- stripPrefix "pine" input  -> Right (Pine, rest)
+     | Just rest <- stripPrefix "birch" input -> Right (Birch, rest)
+     | Just rest <- stripPrefix "marple" input -> Right (Marple, rest)
+     | otherwise                              -> Left "Unknown tree name"
 
 -- <leaf> ::= "leaf"
 parseLeaf :: Parser Leaf
@@ -192,25 +212,25 @@ parseLeaf = Parsers.fmap (const Leaf) (parseLiteral "leaf")
 
 -- <leaves> ::= <leaf> | <leaf> <leaves>
 parseLeaves :: Parser Leaves
-parseLeaves input =
+parseLeaves = P $ \input ->
   trace ("Parsed leaves input: " ++ show input) $
-  case parseMultipleLeaves input of
+  case parse parseMultipleLeaves input of
     Right (leaves, rest) -> Right (leaves, rest)
-    Left _               -> parseSingleLeaf input
+    Left _               -> parse parseSingleLeaf input
 
 parseSingleLeaf :: Parser Leaves
-parseSingleLeaf input =
-  case parseLeaf input of
+parseSingleLeaf = P $ \input ->
+  case parse parseLeaf input of
     Right (_, rest) -> Right (SingleLeaf Leaf, rest)
     Left err        -> Left err
 
 parseMultipleLeaves :: Parser Leaves
-parseMultipleLeaves input =
-  case parseLeaf input of
+parseMultipleLeaves = P $ \input ->
+  case parse parseLeaf input of
     Right (leaf, rest1) ->
-      case parseWhitespace rest1 of
+      case parse parseWhitespace rest1 of
         Right (_, rest2) ->
-          case parseLeaves rest2 of
+          case parse parseLeaves rest2 of
             Right (leaves, rest3) -> Right (MultipleLeaves leaf leaves, rest3)
             Left err -> Left err
         Left err -> Left err
@@ -227,25 +247,25 @@ parseBranch =
 
 -- <branches> ::= <branch> | <branch> <branches>
 parseBranches :: Parser Branches
-parseBranches input =
+parseBranches = P $ \input ->
   trace ("Parsed branches input: " ++ show input) $
-  case parseMultipleBranches input of
+  case parse parseMultipleBranches input of
     Right (branches, rest) -> Right (branches, rest)
-    Left _                  -> parseSingleBranch input
+    Left _                 -> parse parseSingleBranch input
 
 parseSingleBranch :: Parser Branches
-parseSingleBranch input =
-  case parseBranch input of
+parseSingleBranch = P $ \input ->
+  case parse parseBranch input of
     Right (branch, rest) -> Right (SingleBranch branch, rest)
     Left err             -> Left err
 
 parseMultipleBranches :: Parser Branches
-parseMultipleBranches input =
-  case parseBranch input of
+parseMultipleBranches = P $ \input ->
+  case parse parseBranch input of
     Right (branch, rest1) ->
-      case parseWhitespace rest1 of
+      case parse parseWhitespace rest1 of
         Right (_, rest2) ->
-          case parseBranches rest2 of
+          case parse parseBranches rest2 of
             Right (branches, rest3) -> Right (MultipleBranches branch branches, rest3)
             Left err -> Left err
         Left err -> Left err
@@ -253,13 +273,13 @@ parseMultipleBranches input =
 
 -- <tree> ::= <name> <branches>
 parseTree :: Parser Tree
-parseTree input =
+parseTree = P $ \input ->
   trace ("Parsed tree input: " ++ show input) $
-  case parseName input of
+  case parse parseName input of
     Right (name, rest1) ->
-      case parseWhitespace rest1 of
+      case parse parseWhitespace rest1 of
         Right (_, rest2) ->
-          case parseBranches rest2 of
+          case parse parseBranches rest2 of
             Right (branches, rest3) -> Right (Tree name branches, rest3)
             Left err -> Left err
         Left err -> Left err
@@ -267,13 +287,13 @@ parseTree input =
 
 -- <forest> ::= <tree> | <tree> <forest>
 parseForest :: Parser Forest
-parseForest input =
+parseForest = P $ \input ->
   trace ("Parsed forest input: " ++ show input) $
-  case parseTree input of
+  case parse parseTree input of
     Right (tree, rest1) ->
-      case parseWhitespace rest1 of
+      case parse parseWhitespace rest1 of
         Right (_, rest2) ->
-          case parseForest rest2 of
+          case parse parseForest rest2 of
             Right (forest1, rest3) ->
               Right (tree : forest1, rest3)  -- Combine tree with the parsed forest
             Left _ -> Right ([tree], rest2) -- No more trees, return single tree as forest

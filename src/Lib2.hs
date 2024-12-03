@@ -14,9 +14,9 @@ import Parsers
 parseQuery :: String -> Either String Query
 parseQuery "" = Left "Command cannot be empty"
 parseQuery input =
-  case parseCommands input of
-  Right (query, _) -> Right query
-  Left err         -> Left err
+  case parse parseCommands input of
+    Right (query, _) -> Right query
+    Left err         -> Left err
 
 data State = State { forest :: Forest }
   deriving (Show, Eq)
