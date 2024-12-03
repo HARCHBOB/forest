@@ -5,10 +5,11 @@ module Lib2
     parseQuery,
     State(..),
     emptyState,
-    stateTransition,
+    stateTransition
     ) where
 
 import Parsers
+import Test.QuickCheck
 
 
 parseQuery :: String -> Either String Query
@@ -25,15 +26,10 @@ data State = State { forest :: Forest }
 emptyState :: State
 emptyState = State { forest = [] }
 
-
 stateTransition :: State -> Query -> Either String (Maybe String, State)
 stateTransition st (PlantTree tree) =
   let newForest = tree : forest st
-  in Right (Just ("Planted a new " ++ showTreeName tree), st { forest = newForest })
-
-stateTransition st (PlantForest newForest) =
-  let updatedForest = newForest ++ forest st
-  in Right (Just "Planted a new forest.", st { forest = updatedForest })
+  in Right (Just ("Planted a new " ++ showTreeName tree ++ ": " ++ show tree), st { forest = newForest })
 
 stateTransition st (CutBranch tName) =
   case findTree tName (forest st) of
@@ -41,11 +37,11 @@ stateTransition st (CutBranch tName) =
     Just (Tree name None) ->
       Right (Just $ "No branches to cut on " ++ show name, st)
     Just (Tree name (SingleBranch _)) ->
-      let newForest = replaceTree (Tree name None) (forest st)
-      in Right (Just $ "Cut the only branch from " ++ show name, st { forest = newForest })
+      let (tree, newForest) = replaceTree (Tree name None) (forest st)
+      in Right (Just $ "Cut the only branch from " ++ show name ++ ": " ++ show tree, st { forest = newForest })
     Just (Tree name (MultipleBranches _ remainingBranches)) ->
-      let newForest = replaceTree (Tree name remainingBranches) (forest st)
-      in Right (Just $ "Cut the first branch from " ++ show name, st { forest = newForest })
+      let (tree, newForest) = replaceTree (Tree name remainingBranches) (forest st)
+      in Right (Just $ "Cut the first branch from " ++ show name ++ ": " ++ show tree, st { forest = newForest })
 
 stateTransition st (CutBranches tName) =
   case findTree tName (forest st) of
@@ -53,11 +49,11 @@ stateTransition st (CutBranches tName) =
     Just (Tree name None) ->
       Right (Just $ "No branches to cut on " ++ show name, st)
     Just (Tree name _) ->
-      let newForest = replaceTree (Tree name None) (forest st)
-      in Right (Just $ "Cut all branches from " ++ show name, st { forest = newForest })
+      let (tree, newForest) = replaceTree (Tree name None) (forest st)
+      in Right (Just $ "Cut all branches from " ++ show name ++ ": " ++ show tree, st { forest = newForest })
 
 stateTransition st (CutTree name) =
-  let newForest = filter (\(Tree n _) -> n /= name) (forest st)
+  let newForest = cutFirstTree name (forest st)
   in Right (Just ("Cut down the " ++ show name ++ " tree."), st { forest = newForest })
 
 stateTransition st CutForest =
@@ -69,9 +65,9 @@ stateTransition st (InspectBranch tName) =
     Just (Tree name None) ->
       Right (Just $ "No branches on " ++ show name, st)
     Just (Tree name (SingleBranch branch)) ->
-      Right (Just $ "Single branch found on " ++ show name ++ ": " ++ show branch, st)
+      Right (Just $ "Single branch found on " ++ show name ++ ": \n" ++ show branch, st)
     Just (Tree name (MultipleBranches branch _)) ->
-      Right (Just $ "First branch found on " ++ show name ++ ": " ++ show branch, st)
+      Right (Just $ "First branch found on " ++ show name ++ ": \n" ++ show branch, st)
 
 stateTransition st (InspectBranches tName) =
   case findTree tName (forest st) of
@@ -81,18 +77,18 @@ stateTransition st (InspectBranches tName) =
     Just (Tree name (SingleBranch branch)) ->
       Right (Just $ "One branch on " ++ show name ++ ": " ++ show branch, st)
     Just (Tree name (MultipleBranches branch branches)) ->
-      Right (Just $ "Multiple branches on " ++ show name ++ ": " ++ showAllBranches branch branches, st)
+      Right (Just $ "Multiple branches on " ++ show name ++ ": \n" ++ showAllBranches branch branches, st)
 
 stateTransition st (InspectTree name) =
   case findTree name (forest st) of
-    Just tree -> Right (Just $ "Inspecting tree:\n" ++ showTreeDetails tree, st)
+    Just tree -> Right (Just $ "Inspecting tree:\n  " ++ show tree ++ "\n" ++ showTreeDetails tree, st)
     Nothing -> Left ("No such tree: " ++ show name)
 
 stateTransition st InspectForest =
   if null (forest st)
     then Right (Just "The forest is empty.", st)
     else
-      let detailedInfo = unlines (map showTreeDetails (forest st))
+      let detailedInfo = unlines (map show (forest st))
       in Right (Just $ "Forest details:\n" ++ detailedInfo, st)
 
 -- | Helper functions
@@ -108,7 +104,7 @@ countLeaves (MultipleLeaves _ ls) = 1 + countLeaves ls
 showAllBranches :: Branch -> Branches -> String
 showAllBranches branch None = show branch
 showAllBranches branch (SingleBranch b) = show branch ++ ", " ++ show b
-showAllBranches branch (MultipleBranches b bs) = show branch ++ ", " ++ showAllBranches b bs
+showAllBranches branch (MultipleBranches b bs) = show branch ++ "\n " ++ showAllBranches b bs
 
 countBranches :: Branches -> Int
 countBranches None = 0
@@ -121,13 +117,24 @@ showTreeName (Tree name _) = show name
 getTreeName :: Tree -> Name
 getTreeName (Tree name _) = name
 
-replaceTree :: Tree -> Forest -> Forest
-replaceTree newTree = map (\t -> case getTreeName t == getTreeName newTree of
-    True  -> newTree
-    False -> t)
+replaceTree :: Tree -> Forest -> (Tree, Forest)
+replaceTree newTree forest = 
+  let newForest = map (\t -> if getTreeName t == getTreeName newTree then newTree else t) forest
+  in (newTree, newForest)
 
 findTree :: Name -> Forest -> Maybe Tree
 findTree _ [] = Nothing
 findTree name (t@(Tree n _):ts)
   | n == name = Just t
   | otherwise = findTree name ts
+
+cutFirstTree :: Name -> Forest -> Forest
+cutFirstTree _ [] = []
+cutFirstTree name (t@(Tree n _):ts)
+  | n == name = ts
+  | otherwise = t : cutFirstTree name ts
+
+
+
+instance Arbitrary State where
+  arbitrary = State <$> arbitrary

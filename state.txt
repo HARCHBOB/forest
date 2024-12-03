@@ -1,1 +1,4 @@
-PlantForest [Tree Oak (SingleBranch (Branch (SingleLeaf Leaf))),Tree Birch (MultipleBranches (Branch (MultipleLeaves Leaf (MultipleLeaves Leaf (MultipleLeaves Leaf (SingleLeaf Leaf))))) (SingleBranch (Branch (SingleLeaf Leaf))))]
+BEGIN
+plant birch branch leaf branch leaf;
+plant oak branch leaf branch leaf leaf;
+END
