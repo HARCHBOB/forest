@@ -126,7 +126,7 @@ renderBranch :: Lib2.Branch -> String
 renderBranch (Lib2.Branch leaves) = "branch" ++ renderLeaves leaves
 
 renderBranches :: Lib2.Branches -> String
-renderBranches Lib2.None = ""
+renderBranches Lib2.None = " none"
 renderBranches (Lib2.SingleBranch branch) = " " ++ renderBranch branch
 renderBranches (Lib2.MultipleBranches branch branches) = " " ++ renderBranch branch ++ renderBranches branches
 

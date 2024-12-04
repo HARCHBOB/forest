@@ -118,8 +118,8 @@ getTreeName :: Tree -> Name
 getTreeName (Tree name _) = name
 
 replaceTree :: Tree -> Forest -> (Tree, Forest)
-replaceTree newTree forest = 
-  let newForest = map (\t -> if getTreeName t == getTreeName newTree then newTree else t) forest
+replaceTree newTree forst = 
+  let newForest = map (\t -> if getTreeName t == getTreeName newTree then newTree else t) forst
   in (newTree, newForest)
 
 findTree :: Name -> Forest -> Maybe Tree

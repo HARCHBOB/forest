@@ -1,4 +1,5 @@
 BEGIN
-plant birch branch leaf branch leaf;
-plant oak branch leaf branch leaf leaf;
+plant maple branch leaf;
+plant pine branch leaf;
+plant oak branch leaf leaf;
 END

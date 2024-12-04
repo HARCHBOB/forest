@@ -1,0 +1,58 @@
+*** commands one-by-one
+
+Welcome! Press [TAB] for auto completion, type ':paste' for multiline input
+>>> plant oak branch leaf leaf branch leaf
+Planted a new Oak: Tree Oak (MultipleBranches (Branch (MultipleLeaves Leaf (SingleLeaf Leaf))) (SingleBranch (Branch (SingleLeaf Leaf))))
+>>> plant maple branch leaf leaf leaf leaf branch leaf
+Planted a new Maple: Tree Maple (MultipleBranches (Branch (MultipleLeaves Leaf (MultipleLeaves Leaf (MultipleLeaves Leaf (SingleLeaf Leaf))))) (SingleBranch (Branch (SingleLeaf Leaf))))
+>>> cut branch oak
+Cut the first branch from Oak: Tree Oak (SingleBranch (Branch (SingleLeaf Leaf)))
+>>> inspect forest
+Forest details:
+Tree Maple (MultipleBranches (Branch (MultipleLeaves Leaf (MultipleLeaves Leaf (MultipleLeaves Leaf (SingleLeaf Leaf))))) (SingleBranch (Branch (SingleLeaf Leaf))))
+Tree Oak (SingleBranch (Branch (SingleLeaf Leaf)))
+
+>>> cut maple
+Cut down the Maple tree.
+>>> inspect forest
+Forest details:
+Tree Oak (SingleBranch (Branch (SingleLeaf Leaf)))
+
+
+*** batch of commands, save and load them
+
+Welcome! Press [TAB] for auto completion, type ':paste' for multiline input
+>>> :paste
+-- Entering multi-line mode. Press <Ctrl-D> to finish.
+| BEGIN
+| plant oak branch leaf branch leaf branch leaf leaf;
+| cut branch oak;
+| cut branch oak;
+| plant pine branch leaf;
+| plant maple branch leaf;
+| inspect forest;
+| END
+| 
+Forest details:
+Tree Maple (SingleBranch (Branch (SingleLeaf Leaf)))
+Tree Pine (SingleBranch (Branch (SingleLeaf Leaf)))
+Tree Oak (SingleBranch (Branch (MultipleLeaves Leaf (SingleLeaf Leaf))))
+
+>>> save
+State saved successfully
+>>> cut forest
+Cut down the entire forest.
+>>> inspect forest
+The forest is empty.
+>>> load
+State loaded successfully.
+Forest details:
+Tree Oak (SingleBranch (Branch (MultipleLeaves Leaf (SingleLeaf Leaf))))
+Tree Pine (SingleBranch (Branch (SingleLeaf Leaf)))
+Tree Maple (SingleBranch (Branch (SingleLeaf Leaf)))
+
+>>> inspect forest
+Forest details:
+Tree Oak (SingleBranch (Branch (MultipleLeaves Leaf (SingleLeaf Leaf))))
+Tree Pine (SingleBranch (Branch (SingleLeaf Leaf)))
+Tree Maple (SingleBranch (Branch (SingleLeaf Leaf)))

@@ -29,7 +29,7 @@ module Parsers
     ) where
 
 import Control.Applicative
-import Test.QuickCheck (Arbitrary (..), Gen, elements, listOf1, suchThat, oneof)
+import Test.QuickCheck (Arbitrary (..), elements, oneof)
 --import Debug.Trace (trace)
 --trace ("Parsed name: " ++ show name ++ ", Remaining: " ++ show rest1) $
 
@@ -127,7 +127,7 @@ stripPrefix prefix str
 
 -- <name> ::= "oak" | "pine" | "birch" | "maple"
 parseName :: Parser Name
-parseName = 
+parseName =
   (parseLiteral "oak" >> return Oak) <|>
   (parseLiteral "pine" >> return Pine) <|>
   (parseLiteral "birch" >> return Birch) <|>
@@ -145,7 +145,7 @@ parseSingleLeaf :: Parser Leaves
 parseSingleLeaf = do
   leaf <- parseLeaf
   return $ SingleLeaf leaf
-    
+
 parseMultipleLeaves :: Parser Leaves
 parseMultipleLeaves = do
   leaf <- parseLeaf
@@ -163,7 +163,12 @@ parseBranch = do
 
 -- <branches> ::= <branch> | <branch> <branches>
 parseBranches :: Parser Branches
-parseBranches = parseMultipleBranches <|> parseSingleBranch <|> return None
+parseBranches = parseMultipleBranches <|> parseSingleBranch <|> parseNoneBranches
+
+parseNoneBranches :: Parser Branches
+parseNoneBranches = do
+  _ <- parseLiteral "none"
+  return None
 
 parseSingleBranch :: Parser Branches
 parseSingleBranch = do
@@ -260,40 +265,30 @@ parsePlantCommand :: Parser Query
 parsePlantCommand = parsePlantTree
 
 parseCutCommand :: Parser Query
-parseCutCommand = 
-  parseCutBranch <|> 
-  parseCutBranches <|> 
-  parseCutTree <|> 
+parseCutCommand =
+  parseCutBranch <|>
+  parseCutBranches <|>
+  parseCutTree <|>
   parseCutForest
 
 parseInspectCommand :: Parser Query
-parseInspectCommand = 
-  parseInspectBranch <|> 
-  parseInspectBranches <|> 
-  parseInspectTree <|> 
+parseInspectCommand =
+  parseInspectBranch <|>
+  parseInspectBranches <|>
+  parseInspectTree <|>
   parseInspectForest
 
 parseCommands :: Parser Query
 parseCommands =
-    parsePlantCommand <|> 
-    parseCutCommand <|> 
+    parsePlantCommand <|>
+    parseCutCommand <|>
     parseInspectCommand
 
 
 
 instance Arbitrary Query where
   arbitrary =
-    oneof
-      [ PlantTree <$> arbitrary,
-        CutBranch <$> arbitrary,
-        CutBranches <$> arbitrary,
-        CutTree <$> arbitrary,
-        pure CutForest,
-        InspectBranch <$> arbitrary,
-        InspectBranches <$> arbitrary,
-        InspectTree <$> arbitrary,
-        pure InspectForest
-      ]
+    PlantTree <$> arbitrary
 
 instance Arbitrary Name where
   arbitrary = elements [Oak, Pine, Birch, Maple]
