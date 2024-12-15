@@ -1,0 +1,10 @@
+load
+inspect forest
+cut oak 
+plant birch branch leaf leaf leaf leaf branch leaf
+plant oak branch leaf leaf
+:paste
+cut oak
+plant birch branch leaf leaf leaf leaf branch leaf
+plant oak branch leaf leaf
+:paste

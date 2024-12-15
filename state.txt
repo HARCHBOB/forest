@@ -1,0 +1,5 @@
+BEGIN
+plant maple branch leaf;
+plant pine branch leaf;
+plant oak branch leaf leaf;
+END
