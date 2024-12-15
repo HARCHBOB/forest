@@ -94,6 +94,9 @@ executables:
     - wreq
     - bytestring
     - string-conversions
+    - mtl
+    - stm
+    - free
   fp2024-four-server:
     main:                Main.hs
     source-dirs:         app4-server
@@ -106,6 +109,8 @@ executables:
     - repline
     - scotty
     - string-conversions
+    - mtl
+    - stm
 
 tests:
   fp2024-test:

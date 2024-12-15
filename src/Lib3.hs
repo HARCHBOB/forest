@@ -7,11 +7,13 @@ module Lib3
     parseStatements,
     marshallState,
     renderStatements,
-    renderQuery
+    renderQuery,
+    renderTree,
+    renderName
     ) where
 
 import Control.Applicative (Alternative (many), (<|>))
-import Control.Concurrent ( Chan, writeChan, readChan )
+import Control.Concurrent (Chan, newChan, writeChan, readChan )
 import Control.Concurrent.STM(TVar, atomically, readTVar, writeTVar, readTVarIO)
 import Control.Monad.IO.Class (liftIO)
 import System.IO (withFile, IOMode(ReadMode, WriteMode), hGetContents, hPutStr)
@@ -19,6 +21,7 @@ import System.Directory (doesFileExist)
 import Lib2
 import Parsers
 import qualified Parsers as Lib2
+import Debug.Trace (trace)
 
 data StorageOp = Save String (Chan ()) | Load (Chan String)
 -- | This function is started from main
@@ -57,7 +60,13 @@ data Command = StatementCommand Statements |
 
 -- | Parses user's input.
 parseCommand :: String -> Either String (Command, String)
-parseCommand = parse (StatementCommand <$> statements <|> parseLoad <|> parseSave)
+parseCommand str = case parse (
+  StatementCommand <$> 
+  try statements <|> 
+  try parseLoad <|> 
+  parseSave) str of
+    (Left e, _) -> Left e
+    (Right c, r) -> Right (c, r)
 
 parseLoad :: Parser Command
 parseLoad = do
@@ -73,17 +82,17 @@ statements :: Parser Statements
 statements =
   ( do
       _ <- parseLiteral "BEGIN"
-      _ <- parseLiteral "\n"
+      _ <- parseWhitespace
       q <-
         many
           ( do
               q <- Lib2.parseCommands
               _ <- parseLiteral ";"
-              _ <- parseLiteral "\n"
+              _ <- parseWhitespace
               return q
           )
       _ <- parseLiteral "END"
-      _ <- parseLiteral "\n"
+      _ <- parseWhitespace
       return $ Batch q
   )
     <|> (Single <$> Lib2.parseCommands)
@@ -93,7 +102,9 @@ statements =
 -- Reuse Lib2 as much as you can.
 -- You can change Lib2.parseQuery signature if needed.
 parseStatements :: String -> Either String (Statements, String)
-parseStatements = parse statements
+parseStatements str = case parse statements str of
+  (Left e, _) -> Left e
+  (Right s, r) -> Right (s, r)
 
 -- | Converts program's state into Statements
 -- (probably a batch, but might be a single query)
@@ -149,19 +160,12 @@ renderLeaves (Lib2.MultipleLeaves leaf leaves) = " " ++ renderLeaf leaf ++ rende
 -- is stored in transactinal variable
 stateTransition :: TVar Lib2.State -> Command -> Chan StorageOp -> IO (Either String (Maybe String))
 stateTransition tvarState command ioChan = case command of
-  StatementCommand sts -> atomically $ do
-    state <- readTVar tvarState
-    let queries = case sts of
-                    Batch qs -> qs
-                    Single q -> [q]
-    let results = foldl (\acc query -> case acc of
-                                         Left err -> Left err
-                                         Right (_, st) -> Lib2.stateTransition st query) (Right (Nothing, state)) queries
-    case results of
-      Right (msg, newState) -> do
-        writeTVar tvarState newState
-        return $ Right msg
-      Left err -> return $ Left "Failed to execute batch"
+  SaveCommand -> do
+    state <- readTVarIO tvarState
+    let sts = marshallState state
+    liftIO $ withFile "state.txt" WriteMode $ \h -> do
+      hPutStr h (renderStatements sts)
+    return $ Right (Just "State saved successfully")
   LoadCommand -> do
     contents <- readFile "state.txt"
     case parseStatements contents of
@@ -182,9 +186,16 @@ stateTransition tvarState command ioChan = case command of
               Left err -> return $ Left err
           Left err -> return $ Left "Failed to load state"
       Left err -> return $ Left err
-  SaveCommand -> do
-    state <- readTVarIO tvarState
-    let sts = marshallState state
-    liftIO $ withFile "state.txt" WriteMode $ \h -> do
-      hPutStr h (renderStatements sts)
-    return $ Right (Just "State saved successfully")
+  StatementCommand sts -> atomically $ do
+    state <- readTVar tvarState
+    let queries = case sts of
+                    Batch qs -> qs
+                    Single q -> [q]
+    let results = foldl (\acc query -> case acc of
+                                         Left err -> Left err
+                                         Right (_, st) -> Lib2.stateTransition st query) (Right (Nothing, state)) queries
+    case results of
+      Right (msg, newState) -> do
+        writeTVar tvarState newState
+        return $ Right msg
+      Left err -> return $ Left "Failed to execute batch"

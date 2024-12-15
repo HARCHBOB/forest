@@ -10,14 +10,15 @@ module Lib2
 
 import Parsers
 import Test.QuickCheck
-
+import Debug.Trace (trace)
 
 parseQuery :: String -> Either String Query
 parseQuery "" = Left "Command cannot be empty"
 parseQuery input =
-  case parse parseCommands input of
-    Right (query, _) -> Right query
-    Left err         -> Left err
+  trace ("Parsing input: " ++ input) $
+    case parse parseCommands input of
+      (Right query, _) -> Right query
+      (Left err, _) -> Left err
 
 data State = State { forest :: Forest }
   deriving (Show, Eq)

@@ -1,6 +1,8 @@
 {-# LANGUAGE InstanceSigs #-}
 module Lessons.Lesson14 () where
 
+import Control.Monad.Trans.State (State, get, put, runState)
+
 import Control.Monad.Trans.Class(lift, MonadTrans)
 
 newtype EitherT e m a = EitherT {
