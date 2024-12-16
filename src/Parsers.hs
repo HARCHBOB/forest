@@ -17,6 +17,7 @@ module Parsers
     Name(..),
     Parser,
     parse,
+    runParser,
     try,
     parseLiteral,
     parseChar,
@@ -32,6 +33,15 @@ module Parsers
     parseSingleBranch,
     parseMultipleBranches,
     parseTree,
+    parsePlantTree,
+    parseCutBranch,
+    parseCutBranches,
+    parseCutTree,
+    parseCutForest,
+    parseInspectBranch,
+    parseInspectBranches,
+    parseInspectTree,
+    parseInspectForest,
     parseCommands
     ) where
 
@@ -95,16 +105,6 @@ try p = Parser $ do
         lift (put stateBefore)
         throwError e
 
--- skipSpaces' :: Parser ()
--- skipSpaces' = lift (modify (dropWhile (== ' ')))
-
--- parseLiteral :: String -> Parser String
--- parseLiteral [] = return []
--- parseLiteral (x : xs) = do
---   skipSpaces'
---   _ <- parseChar x
---   --trace ("Parsed literal: " ++ [x]) (parseLiteral xs)
-
 skipSpaces :: Parser ()
 skipSpaces = Parser $ do
     input <- lift get
@@ -115,7 +115,6 @@ parseLiteral :: String -> Parser String
 parseLiteral s = Parser $ do
     runParser skipSpaces
     input <- lift get
-    ----trace ("parseLiteral expecting \"" ++ s ++ "\" got: " ++ show (take 25 input) ++ "...") (return ())
     let len = length s
         (prefix, rest) = splitAt len input
     if map toLower prefix == map toLower s
@@ -127,7 +126,6 @@ parseLiteral s = Parser $ do
 sat :: (Char -> Bool) -> Parser Char
 sat p = Parser $ do
   input <- lift get
-  --trace ("Current input: " ++ input) $
   case input of
     [] -> throwError "Empty String"
     (x : xs) ->
@@ -144,7 +142,6 @@ parseWhitespace = Parser $ do
   let (spaces, rest) = span (== ' ') input
   lift (put rest)
   return spaces
-  --trace ("Parsed whitespace: " ++ spaces) (return spaces)
 
 fmap :: (a -> b) -> Parser a -> Parser b
 fmap f p = do
@@ -169,7 +166,6 @@ parseLeaf :: Parser Leaf
 parseLeaf = do
   _ <- parseLiteral "leaf"
   return Leaf
-  --trace "Parsed leaf" (return Leaf)
 
 -- <leaves> ::= <leaf> | <leaf> <leaves>
 parseLeaves :: Parser Leaves
@@ -181,24 +177,19 @@ parseSingleLeaf :: Parser Leaves
 parseSingleLeaf = do
   leaf <- parseLeaf
   return $ SingleLeaf leaf
-  --trace ("Parsed single leaf: " ++ show leaf) (return $ SingleLeaf leaf)
 
 parseMultipleLeaves :: Parser Leaves
 parseMultipleLeaves = do
   leaf <- parseLeaf
-  --trace ("Parsed leaf in multiple leaves: " ++ show leaf) (return ())
   leaves <- parseLeaves
   return $ MultipleLeaves leaf leaves
-  --trace ("Parsed multiple leaves: " ++ show leaf ++ ", " ++ show leaves) (return $ MultipleLeaves leaf leaves)
 
 -- <branch> ::= "branch" <leaves>
 parseBranch :: Parser Branch
 parseBranch = do
   _ <- parseLiteral "branch"
-  --trace ("Parsed branch") (return ())
   leaves <- parseLeaves
   return $ Branch leaves
-  --trace ("Parsed branch with leaves: " ++ show leaves) (return $ Branch leaves)
 
 -- <branches> ::= <branch> | <branch> <branches>
 parseBranches :: Parser Branches
@@ -211,97 +202,75 @@ parseNoneBranches :: Parser Branches
 parseNoneBranches = do
   _ <- parseLiteral "none"
   return None
-  --trace "Parsed none branches" (return None)
 
 parseSingleBranch :: Parser Branches
 parseSingleBranch = do
   branch <- parseBranch
   return $ SingleBranch branch
-  --trace ("Parsed single branch: " ++ show branch) (return $ SingleBranch branch)
 
 parseMultipleBranches :: Parser Branches
 parseMultipleBranches = do
   branch <- parseBranch
-  --trace ("Parsed branch in multiple branches: " ++ show branch) (return ())
   branches <- parseBranches
   return $ MultipleBranches branch branches
-  --trace ("Parsed multiple branches: " ++ show branch ++ ", " ++ show branches) (return $ MultipleBranches branch branches)
 
 -- <tree> ::= <name> <branches>
 parseTree :: Parser Tree
 parseTree = do
   name <- parseName
-  --trace ("Parsed name: " ++ show name) (return ())
   branches <- parseBranches
-  --trace ("Parsed branches: " ++ show branches) (return ())
   return $ Tree name branches
 
 parsePlantTree :: Parser Query
 parsePlantTree = do
   _ <- parseLiteral "plant"
-  --trace ("Parsed plant") (return ())
   tree <- parseTree
-  --trace ("Parsed tree: " ++ show tree) (return ())
   return $ PlantTree tree
 
 parseCutBranch :: Parser Query
 parseCutBranch = do
   _ <- parseLiteral "cut branch"
-  --trace "Parsed cut branch" (return ())
   name <- parseName
-  --trace ("Parsed name for cut branch: " ++ show name) (return ())
   return $ CutBranch name
 
 parseCutBranches :: Parser Query
 parseCutBranches = do
   _ <- parseLiteral "cut branches"
-  --trace "Parsed cut branches" (return ())
   name <- parseName
-  --trace ("Parsed name for cut branches: " ++ show name) (return ())
   return $ CutBranches name
 
 parseCutTree :: Parser Query
 parseCutTree = do
   _ <- parseLiteral "cut"
-  --trace "Parsed cut" (return ())
   name <- parseName
-  --trace ("Parsed name for cut tree: " ++ show name) (return ())
   return $ CutTree name
 
 parseCutForest :: Parser Query
 parseCutForest = do
   _ <- parseLiteral "cut forest"
-  --trace "Parsed cut forest" (return ())
   return CutForest
 
 parseInspectBranch :: Parser Query
 parseInspectBranch = do
   _ <- parseLiteral "inspect branch"
-  --trace "Parsed inspect branch" (return ())
   name <- parseName
-  --trace ("Parsed name for inspect branch: " ++ show name) (return ())
   return $ InspectBranch name
 
 parseInspectBranches :: Parser Query
 parseInspectBranches = do
   _ <- parseLiteral "inspect branches"
-  --trace "Parsed inspect branches" (return ())
   name <- parseName
-  --trace ("Parsed name for inspect branches: " ++ show name) (return ())
   return $ InspectBranches name
 
 parseInspectTree :: Parser Query
 parseInspectTree = do
   _ <- parseLiteral "inspect"
-  --trace "Parsed inspect" (return ())
   name <- parseName
-  --trace ("Parsed name for inspect tree: " ++ show name) (return ())
   return $ InspectTree name
 
 parseInspectForest :: Parser Query
 parseInspectForest = do
   _ <- parseLiteral "inspect forest"
-  --trace "Parsed inspect forest" (return ())
   return InspectForest
 
 parsePlantCommand :: Parser Query

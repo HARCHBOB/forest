@@ -57,6 +57,7 @@ library
     , directory
     , free
     , random
+    , mtl
     , stm
     , strict
     , transformers

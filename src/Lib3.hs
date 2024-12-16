@@ -9,7 +9,7 @@ module Lib3
     renderStatements,
     renderQuery,
     renderTree,
-    renderName
+    renderName,
     ) where
 
 import Control.Applicative (Alternative (many), (<|>))

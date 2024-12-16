@@ -2,15 +2,15 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# OPTIONS_GHC -fmax-pmcheck-models=100 #-}
 
 module Main (main) where
-
+  
 import Control.Monad.Free (Free (..), liftF)
 import Control.Monad.State
-import Data.ByteString.Lazy.Char8 (ByteString)
+import Data.ByteString.Lazy.Char8 (ByteString, pack )
 import Data.String.Conversions (cs)
 import Network.Wreq
-import Data.ByteString.Lazy.Char8 (ByteString, pack)
 import System.Environment (getArgs)
 import Control.Lens ((^.))
 import qualified Lib2
@@ -72,46 +72,57 @@ inspectForest = liftF $ InspectForest id
 runHttpSingle :: ForestDSL a -> IO a
 runHttpSingle (Pure a) = return a
 runHttpSingle (Free (PlantTree tree next)) = do
+  putStrLn $ "Sending request: plant " ++ tree
   _ <- post "http://localhost:3000" (cs $ "plant " ++ tree :: ByteString)
   runHttpSingle next
 
 runHttpSingle (Free (CutBranch name next)) = do
+  putStrLn $ "Sending request: cut branch " ++ name
   _ <- post "http://localhost:3000" (cs $ "cut branch " ++  name :: ByteString)
   runHttpSingle next
 
 runHttpSingle (Free (CutBranches name next)) = do
+  putStrLn $ "Sending request: cut branches " ++ name
   _ <- post "http://localhost:3000" (cs $ "cut branches " ++  name :: ByteString)
   runHttpSingle next
 
 runHttpSingle (Free (CutTree name next)) = do
+  putStrLn $ "Sending request: cut " ++ name
   _ <- post "http://localhost:3000" (cs $ "cut " ++  name :: ByteString)
   runHttpSingle next
 
 runHttpSingle (Free (CutForest next)) = do
+  putStrLn "Sending request: cut forest"
   _ <- post "http://localhost:3000" (pack "cut forest" :: ByteString)
   runHttpSingle next
 
 runHttpSingle (Free (InspectBranch name next)) = do
+  putStrLn $ "Sending request: inspect branch " ++ name
   resp <- post "http://localhost:3000" (cs $ "inspect branch " ++  name :: ByteString)
   runHttpSingle (next $ cs $ resp ^. responseBody)
 
 runHttpSingle (Free (InspectBranches name next)) = do
+  putStrLn $ "Sending request: inspect branches " ++ name
   resp <- post "http://localhost:3000" (cs $ "inspect branches " ++  name :: ByteString)
   runHttpSingle (next $ cs $ resp ^. responseBody)
 
 runHttpSingle (Free (InspectTree name next)) = do
+  putStrLn $ "Sending request: inspect " ++ name
   resp <- post "http://localhost:3000" (cs $ "inspect " ++  name :: ByteString)
   runHttpSingle (next $ cs $ resp ^. responseBody)
 
 runHttpSingle (Free (InspectForest next)) = do
+  putStrLn "Sending request: inspect forest"
   resp <- post "http://localhost:3000" (pack "inspect forest" :: ByteString)
   runHttpSingle (next $ cs $ resp ^. responseBody)
 
 runHttpSingle (Free (Save next)) = do
+  putStrLn "Sending request: save"
   _ <- post "http://localhost:3000" (pack "save" :: ByteString)
   runHttpSingle next
 
 runHttpSingle (Free (Load next)) = do
+  putStrLn "Sending request: load"
   resp <- post "http://localhost:3000" (pack "load" :: ByteString)
   runHttpSingle (next $ cs $ resp ^. responseBody)
 
@@ -125,40 +136,48 @@ runHttpBatch' acc (Pure a) = do
   unless (null acc) $ do
     let batchCommand = unlines acc
         rawRequest = cs batchCommand :: ByteString
+    putStrLn $ "Sending pure batch request: " ++ batchCommand
     _ <- post "http://localhost:3000" rawRequest
     return ()
   return a
 
 runHttpBatch' acc (Free (PlantTree tree next)) =
-  runHttpBatch' (acc ++ ["plant " ++ tree]) next
+  runHttpBatch' (acc ++ ["plant " ++ tree ++ ";"]) next
 
 runHttpBatch' acc (Free (CutBranch name next)) =
-  runHttpBatch' (acc ++ ["cut branch " ++  name]) next
+  runHttpBatch' (acc ++ ["cut branch " ++  name ++ ";"]) next
 
 runHttpBatch' acc (Free (CutBranches name next)) =
-  runHttpBatch' (acc ++ ["cut branches " ++  name]) next
+  runHttpBatch' (acc ++ ["cut branches " ++  name ++ ";"]) next
 
 runHttpBatch' acc (Free (CutTree name next)) =
-  runHttpBatch' (acc ++ ["cut " ++  name]) next
+  runHttpBatch' (acc ++ ["cut " ++  name ++ ";"]) next
 
 runHttpBatch' acc (Free (CutForest next)) =
-  runHttpBatch' (acc ++ ["cut forest"]) next
+  runHttpBatch' (acc ++ ["cut forest;"]) next
 
-runHttpBatch' acc (Free (Save next)) = do
-  unless (null acc) $ do
-    let batchCommand = unlines acc
-        rawRequest = cs batchCommand :: ByteString
-    _ <- post "http://localhost:3000" rawRequest
-    return ()
-  _ <- post "http://localhost:3000" (pack "save" :: ByteString)
-  runHttpBatch' [] next
+--runHttpBatch' acc (Free (Save next)) = do
+--  unless (null acc) $ do
+--    let batchCommand = unlines acc
+--        rawRequest = cs batchCommand :: ByteString
+--    putStrLn $ "Sending batch request: " ++ batchCommand
+--    _ <- post "http://localhost:3000" rawRequest
+--    return ()
+--  putStrLn "Sending batch request: save"
+--  _ <- post "http://localhost:3000" (pack "save" :: ByteString)
+--  runHttpBatch' [] next
+
+runHttpBatch' acc (Free (Save next)) =
+  runHttpBatch' (acc ++ ["save;"]) next
 
 runHttpBatch' acc (Free (Load next)) = do
   unless (null acc) $ do
     let batchCommand = unlines acc
         rawRequest = cs batchCommand :: ByteString
+    putStrLn $ "Sending batch request: " ++ batchCommand
     _ <- post "http://localhost:3000" rawRequest
     return ()
+  putStrLn "Sending batch request: load"
   resp <- post "http://localhost:3000" (pack "load" :: ByteString)
   runHttpBatch' [] (next $ cs $ resp ^. responseBody)
 
@@ -166,6 +185,7 @@ runHttpBatch' acc (Free (InspectBranch name next)) = do
   unless (null acc) $ do
     let batchCommand = unlines acc
         rawRequest = cs batchCommand :: ByteString
+    putStrLn $ "Sending batch request: " ++ batchCommand
     _ <- post "http://localhost:3000" rawRequest
     return ()
   let cmd = "inspect branch " ++  name
@@ -177,6 +197,7 @@ runHttpBatch' acc (Free (InspectBranches name next)) = do
   unless (null acc) $ do
     let batchCommand = unlines acc
         rawRequest = cs batchCommand :: ByteString
+    putStrLn $ "Sending batch request: " ++ batchCommand
     _ <- post "http://localhost:3000" rawRequest
     return ()
   let cmd = "inspect branches " ++  name
@@ -188,6 +209,7 @@ runHttpBatch' acc (Free (InspectTree name next)) = do
   unless (null acc) $ do
     let batchCommand = unlines acc
         rawRequest = cs batchCommand :: ByteString
+    putStrLn $ "Sending batch request: " ++ batchCommand
     _ <- post "http://localhost:3000" rawRequest
     return ()
   let cmd = "inspect " ++  name
@@ -199,6 +221,7 @@ runHttpBatch' acc (Free (InspectForest next)) = do
   unless (null acc) $ do
     let batchCommand = unlines acc
         rawRequest = cs batchCommand :: ByteString
+    putStrLn $ "Sending batch request: " ++ batchCommand
     _ <- post "http://localhost:3000" rawRequest
     return ()
   let rawRequest = pack "inspect forest" :: ByteString
@@ -212,27 +235,42 @@ runInMemory :: ForestDSL a -> State InMemoryState a
 runInMemory (Pure a) = return a
 runInMemory (Free (PlantTree tree next)) = do
   st <- Control.Monad.State.get
-  case Lib2.stateTransition st (Parsers.PlantTree tree) of
-    Right (_, newState) -> Control.Monad.State.put newState
-    Left err -> error err
+  case Parsers.parse Parsers.parseTree tree of
+    (Right parsedTree, _) ->
+      case Lib2.stateTransition st (Parsers.PlantTree parsedTree) of
+        Right (_, newState) -> Control.Monad.State.put newState
+        Left err -> error err
+    (Left parseErr, _) -> error parseErr
   runInMemory next
-runInMemory (Free (CutBranch name next)) = do
+
+runInMemory (Free (CutBranch nameStr next)) = do
   st <- Control.Monad.State.get
-  case Lib2.stateTransition st (Parsers.CutBranch name) of
-    Right (_, newState) -> Control.Monad.State.put newState
-    Left err -> error err
+  case Parsers.parse Parsers.parseName nameStr of
+    (Right name, _) ->
+      case Lib2.stateTransition st (Parsers.CutBranch name) of
+        Right (_, newState) -> Control.Monad.State.put newState
+        Left err -> error err
+    (Left parseErr, _) -> error parseErr
   runInMemory next
-runInMemory (Free (CutBranches name next)) = do
+
+runInMemory (Free (CutBranches nameStr next)) = do
   st <- Control.Monad.State.get
-  case Lib2.stateTransition st (Parsers.CutBranches name) of
-    Right (_, newState) -> Control.Monad.State.put newState
-    Left err -> error err
+  case Parsers.parse Parsers.parseName nameStr of
+    (Right name, _) ->
+      case Lib2.stateTransition st (Parsers.CutBranches name) of
+        Right (_, newState) -> Control.Monad.State.put newState
+        Left err -> error err
+    (Left parseErr, _) -> error parseErr
   runInMemory next
-runInMemory (Free (CutTree name next)) = do
+
+runInMemory (Free (CutTree nameStr next)) = do
   st <- Control.Monad.State.get
-  case Lib2.stateTransition st (Parsers.CutTree name) of
-    Right (_, newState) -> Control.Monad.State.put newState
-    Left err -> error err
+  case Parsers.parse Parsers.parseName nameStr of
+    (Right name, _) ->
+      case Lib2.stateTransition st (Parsers.CutTree name) of
+        Right (_, newState) -> Control.Monad.State.put newState
+        Left err -> error err
+    (Left parseErr, _) -> error parseErr
   runInMemory next
 runInMemory (Free (CutForest next)) = do
   st <- Control.Monad.State.get
@@ -240,36 +278,48 @@ runInMemory (Free (CutForest next)) = do
     Right (_, newState) -> Control.Monad.State.put newState
     Left err -> error err
   runInMemory next
-runInMemory (Free (InspectBranch name next)) = do
+
+runInMemory (Free (InspectBranch nameStr next)) = do
   st <- Control.Monad.State.get
-  case Lib2.stateTransition st (Parsers.InspectBranch name) of
-    Right (Just result, newState) -> do
-      Control.Monad.State.put newState
-      runInMemory (next result)
-    Right (Nothing, newState) -> do
-      Control.Monad.State.put newState
-      runInMemory (next "")
-    Left err -> error err
-runInMemory (Free (InspectBranches name next)) = do
+  case Parsers.parse Parsers.parseName nameStr of
+    (Right name, _) ->
+      case Lib2.stateTransition st (Parsers.InspectBranch name) of
+        Right (Just result, newState) -> do
+          Control.Monad.State.put newState
+          runInMemory (next result)
+        Right (Nothing, newState) -> do
+          Control.Monad.State.put newState
+          runInMemory (next "")
+        Left err -> error err
+    (Left parseErr, _) -> error parseErr
+runInMemory (Free (InspectBranches nameStr next)) = do
   st <- Control.Monad.State.get
-  case Lib2.stateTransition st (Parsers.InspectBranches name) of
-    Right (Just result, newState) -> do
-      Control.Monad.State.put newState
-      runInMemory (next result)
-    Right (Nothing, newState) -> do
-      Control.Monad.State.put newState
-      runInMemory (next "")
-    Left err -> error err
-runInMemory (Free (InspectTree name next)) = do
+  case Parsers.parse Parsers.parseName nameStr of
+    (Right name, _) ->
+      case Lib2.stateTransition st (Parsers.InspectBranches name) of
+        Right (Just result, newState) -> do
+          Control.Monad.State.put newState
+          runInMemory (next result)
+        Right (Nothing, newState) -> do
+          Control.Monad.State.put newState
+          runInMemory (next "")
+        Left err -> error err
+    (Left parseErr, _) -> error parseErr
+
+runInMemory (Free (InspectTree nameStr next)) = do
   st <- Control.Monad.State.get
-  case Lib2.stateTransition st (Parsers.InspectTree name) of
-    Right (Just result, newState) -> do
-      Control.Monad.State.put newState
-      runInMemory (next result)
-    Right (Nothing, newState) -> do
-      Control.Monad.State.put newState
-      runInMemory (next "")
-    Left err -> error err
+  case Parsers.parse Parsers.parseName nameStr of
+    (Right name, _) ->
+      case Lib2.stateTransition st (Parsers.InspectTree name) of
+        Right (Just result, newState) -> do
+          Control.Monad.State.put newState
+          runInMemory (next result)
+        Right (Nothing, newState) -> do
+          Control.Monad.State.put newState
+          runInMemory (next "")
+        Left err -> error err
+    (Left parseErr, _) -> error parseErr
+
 runInMemory (Free (InspectForest next)) = do
   st <- Control.Monad.State.get
   case Lib2.stateTransition st Parsers.InspectForest of
@@ -280,9 +330,11 @@ runInMemory (Free (InspectForest next)) = do
       Control.Monad.State.put newState
       runInMemory (next "")
     Left err -> error err
+
 runInMemory (Free (Save next)) = do
   -- Saving is a no-op in memory (just keep the current state)
   runInMemory next
+
 runInMemory (Free (Load next)) = do
   -- Loading returns the current state as a string
   currentState <- Control.Monad.State.get
@@ -292,10 +344,13 @@ main :: IO ()
 main = do
   args <- getArgs
   let program = do
-        load
+        _ <- load
         plantTree "oak branch leaf"
         plantTree "pine branch leaf leaf"
-        inspectForest
+        res <- inspectForest
+        cutForest
+        _ <- inspectForest
+        return res
 
   case args of
     ["single"] -> do
@@ -308,4 +363,7 @@ main = do
       let (result, finalState) = runState (runInMemory program) Lib2.emptyState
       putStrLn result
       print finalState
+    ["stop"] -> do
+      resp <- post "http://localhost:3000/stop" (pack "stop" :: ByteString)
+      putStrLn $ cs $ resp ^. responseBody
     _ -> putStrLn "Usage: stack run forest-client [single|batch|memory]"
